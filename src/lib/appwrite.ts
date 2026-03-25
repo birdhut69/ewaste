@@ -640,12 +640,34 @@ export async function updateReportStatus(reportId: string, status: ReportStatus)
     await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, updateData)
     invalidateReportsCache()
   } catch (error) {
-    console.error(`Failed to update report ${reportId}:`, error)
-    if (shouldInvalidateSession(error)) {
+    const unknownAttribute = getUnknownAttribute(error)
+    // Some projects return generic 400 without unknown-attribute detail.
+    // Fall back to notes marker for both cases.
+    if (!unknownAttribute && !isBadRequestError(error)) {
+      console.error(`Failed to update report ${reportId}:`, error)
+      if (shouldInvalidateSession(error)) {
+        clearSession()
+        throw new Error('Session expired. Please login again.')
+      }
+      throw error
+    }
+  }
+
+  // Fallback: append status change to notes
+  try {
+    const existing = await databases.getDocument(DB_ID, COLL_REPORTS, reportId) as unknown as Record<string, unknown>
+    const previousNotes = typeof existing.notes === 'string' ? existing.notes.trim() : ''
+    const marker = `Status changed to: ${status}${status === 'collected' ? ` at ${new Date().toISOString()}` : ''}`
+    const nextNotes = previousNotes ? `${previousNotes}\n${marker}` : marker
+    await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, { notes: nextNotes })
+    invalidateReportsCache()
+  } catch (fallbackError) {
+    console.error(`Failed to update report status (fallback) ${reportId}:`, fallbackError)
+    if (shouldInvalidateSession(fallbackError)) {
       clearSession()
       throw new Error('Session expired. Please login again.')
     }
-    throw error
+    throw fallbackError
   }
 }
 
@@ -668,7 +690,9 @@ export async function updateReportVerification(reportId: string, input: {
     return
   } catch (error) {
     const unknownAttribute = getUnknownAttribute(error)
-    if (!unknownAttribute) {
+    // Some projects return generic 400 without unknown-attribute detail.
+    // Fall back to notes marker for both cases.
+    if (!unknownAttribute && !isBadRequestError(error)) {
       throw error
     }
   }
@@ -684,11 +708,35 @@ export async function updateReportVerification(reportId: string, input: {
 
 // Assign report to driver
 export async function assignReport(reportId: string, driverId: string): Promise<void> {
-  await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, {
+  const payload = {
     assignedDriverId: driverId,
     status: 'assigned'
-  })
-  invalidateReportsCache()
+  }
+
+  try {
+    await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, payload)
+    invalidateReportsCache()
+    return
+  } catch (error) {
+    const unknownAttribute = getUnknownAttribute(error)
+    // Some projects return generic 400 without unknown-attribute detail.
+    // Fall back to notes marker for both cases.
+    if (!unknownAttribute && !isBadRequestError(error)) {
+      throw error
+    }
+  }
+
+  // Fallback: append assignment to notes
+  try {
+    const existing = await databases.getDocument(DB_ID, COLL_REPORTS, reportId) as unknown as Record<string, unknown>
+    const previousNotes = typeof existing.notes === 'string' ? existing.notes.trim() : ''
+    const marker = `Assigned to driver: ${driverId}`
+    const nextNotes = previousNotes ? `${previousNotes}\n${marker}` : marker
+    await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, { notes: nextNotes })
+    invalidateReportsCache()
+  } catch (fallbackError) {
+    throw new Error((fallbackError as { message?: string })?.message || 'Failed to assign report')
+  }
 }
 
 export async function submitAIFeedback(reportId: string, input: {
