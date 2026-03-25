@@ -59,6 +59,11 @@ export default function Auth({ onLogin }: AuthProps) {
 
   const selectedRoleMeta = ROLES.find((role) => role.id === selectedRole)
 
+  const buildConnectivityHint = (): string => {
+    const endpoint = (import.meta.env as Record<string, string | undefined>).VITE_APPWRITE_ENDPOINT || 'not set'
+    return `Origin: ${window.location.origin} | Endpoint: ${endpoint}`
+  }
+
   const toUserFacingError = (err: unknown, fallback: string): string => {
     const message = (err as { message?: string })?.message
     const lowered = message?.toLowerCase() || ''
@@ -81,7 +86,8 @@ export default function Auth({ onLogin }: AuthProps) {
 
     if (isFetchFailure) {
       return (
-        'Could not reach Appwrite from this device. Ensure your phone and backend are reachable and your current origin is allowlisted in Appwrite Platforms/CORS.'
+        'Could not reach Appwrite from this device. Ensure your phone and backend are reachable and your current origin is allowlisted in Appwrite Platforms/CORS. ' +
+        buildConnectivityHint()
       )
     }
 
