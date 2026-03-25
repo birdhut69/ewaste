@@ -562,50 +562,49 @@ function ReportTab({
     }
 
     try {
+      // Save locally first - this ensures report isn't lost
       await savePendingReport(localReport)
 
+      // Try online sync if connected, but don't block on failures
       if (isOnline) {
-        let photoFileId: string | undefined
-        if (photoFile) {
-          photoFileId = await uploadPhoto(photoFile, userId)
+        try {
+          let photoFileId: string | undefined
+          if (photoFile) {
+            photoFileId = await uploadPhoto(photoFile, userId)
+          }
+
+          await createReport({
+            citizenId: userId,
+            latitude: location.lat,
+            longitude: location.lng,
+            category: validated.category,
+            photoFileId,
+            notes: validated.notes,
+            detectedObjectName: validated.detectedObjectName,
+            detectedCategory: validated.detectedCategory,
+            confidenceScore: validated.confidenceScore,
+            aiModelVersion: validated.aiModelVersion,
+            userOverrideCategory: userOverride
+          })
+
+          // Mark as synced only after successful creation
+          await markReportSynced({
+            ...localReport,
+            syncStatus: 'synced',
+            synced: true,
+            photoBase64: undefined
+          })
+        } catch (syncError) {
+          // Log but don't block - report is safely saved locally
+          console.warn('Online sync failed, report queued for retry:', syncError)
         }
-
-        await createReport({
-          citizenId: userId,
-          latitude: location.lat,
-          longitude: location.lng,
-          category: validated.category,
-          photoFileId,
-          notes: validated.notes,
-          detectedObjectName: validated.detectedObjectName,
-          detectedCategory: validated.detectedCategory,
-          confidenceScore: validated.confidenceScore,
-          aiModelVersion: validated.aiModelVersion,
-          userOverrideCategory: userOverride
-        })
-
-        // Prevent duplicate re-sync for reports that were already created online.
-        await markReportSynced({
-          ...localReport,
-          syncStatus: 'synced',
-          synced: true,
-          photoBase64: undefined
-        })
       }
 
       setStep('success')
       setTimeout(onSuccess, 2000)
     } catch (error) {
-      console.error('Failed to submit report:', error)
-
-      // If upload/create failed after local save, report remains queued and will sync later.
-      if (isOnline) {
-        setFormError((error as { message?: string })?.message || 'Saved locally. Will sync when network is stable.')
-      }
-
-      setStep('success')
-      setTimeout(onSuccess, 2000)
-    } finally {
+      console.error('Failed to save report locally:', error)
+      setFormError('Could not save report. Please try again.')
       setSubmitting(false)
     }
   }

@@ -696,6 +696,7 @@ function MapView({ reports, hotspots }: { reports: Report[]; hotspots: Hotspot[]
           center={center} 
           zoom={12} 
           style={{ height: '100%', width: '100%' }}
+          touch={true}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -727,7 +728,12 @@ function MapView({ reports, hotspots }: { reports: Report[]; hotspots: Hotspot[]
 
           {/* Individual Report Markers */}
           {reports.map((report) => {
-            const isPending = report.status === 'pending'
+            // Validate coordinates before rendering
+            if (!Number.isFinite(report.latitude) || !Number.isFinite(report.longitude)) {
+              console.warn('Invalid coordinates for report:', report.$id, report.latitude, report.longitude)
+              return null
+            }
+            
             const catInfo = getCategoryInfo(report.category)
             
             // Skip if collected to reduce clutter, or make them smaller/transparent

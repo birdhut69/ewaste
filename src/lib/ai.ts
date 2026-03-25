@@ -5,13 +5,13 @@ import { EWASTE_CATEGORIES } from './types'
 import type { AIDetectionResult, CategoryId } from './types'
 import { getAIFeedbackSignal } from './aiFeedback'
 
-const AI_MODEL_VERSION = 'ewaste-ensemble-v3.3-consensus'
-const LITE_MODEL_VERSION = 'ewaste-lite-v3'
+const AI_MODEL_VERSION = 'ewaste-ensemble-v3.5-accurate'
+const LITE_MODEL_VERSION = 'ewaste-lite-v3.2'
 const CANVAS_SIZE = 224
-const MIN_DETECTION_SCORE = 0.33
+const MIN_DETECTION_SCORE = 0.28
 const MAX_CLASSIFIER_PREDICTIONS = 10
-const CONSENSUS_MIN_AGREEMENT = 0.66
-const CONSENSUS_BASE_BONUS = 28
+const CONSENSUS_MIN_AGREEMENT = 0.60
+const CONSENSUS_BASE_BONUS = 32
 
 interface ClassifierPrediction {
   className: string
@@ -167,17 +167,22 @@ const DIRECT_MAPPING_ENTRIES = Object.entries(DIRECT_CLASS_MAPPINGS).sort(
 )
 
 const COCO_TO_EWASTE: Record<string, { category: CategoryId; boost: number }> = {
-  'cell phone': { category: 'mobile', boost: 38 },
-  laptop: { category: 'computer', boost: 38 },
-  keyboard: { category: 'computer', boost: 34 },
-  tv: { category: 'monitor', boost: 36 },
-  remote: { category: 'mobile', boost: 26 },
-  microwave: { category: 'appliance', boost: 34 },
-  oven: { category: 'appliance', boost: 32 },
-  toaster: { category: 'appliance', boost: 32 },
-  refrigerator: { category: 'appliance', boost: 34 },
-  'hair drier': { category: 'appliance', boost: 26 },
-  mouse: { category: 'computer', boost: 38 }
+  'cell phone': { category: 'mobile', boost: 42 },
+  laptop: { category: 'computer', boost: 42 },
+  keyboard: { category: 'computer', boost: 40 },
+  tv: { category: 'monitor', boost: 42 },
+  monitor: { category: 'monitor', boost: 40 },
+  remote: { category: 'mobile', boost: 32 },
+  microwave: { category: 'appliance', boost: 40 },
+  oven: { category: 'appliance', boost: 38 },
+  toaster: { category: 'appliance', boost: 38 },
+  refrigerator: { category: 'appliance', boost: 42 },
+  'hair drier': { category: 'appliance', boost: 32 },
+  mouse: { category: 'computer', boost: 42 },
+  printer: { category: 'computer', boost: 38 },
+  scanner: { category: 'computer', boost: 36 },
+  router: { category: 'computer', boost: 36 },
+  modem: { category: 'computer', boost: 36 }
 }
 
 const KEYWORD_HINTS: Record<CategoryId, Array<{ term: string; weight: number }>> = {
@@ -248,77 +253,25 @@ const FALSE_POSITIVE_TYPOS: Record<string, string> = {
 }
 
 const NON_EWASTE_TERMS = [
-  'crate',
-  'carton',
-  'wooden box',
-  'table',
-  'chair',
-  'sofa',
-  'bed',
-  'person',
-  'human',
-  'cat',
-  'dog',
-  'bird',
-  'flower',
-  'plant',
-  'banana',
-  'apple',
-  'orange',
-  'food',
-  'tree',
-  'mountain',
-  'carpet',
-  'wood',
-  'meat loaf',
-  'meatloaf',
-  'loaf',
-  'dough',
-  'bread',
-  'pizza',
-  'sandwich',
-  'burrito',
-  'taco',
-  'hot dog',
-  'hamburger',
-  'potpie',
-  'bakery',
-  'basketball',
-  'football',
-  'soccer',
-  'baseball',
-  'volleyball',
-  'tennis',
-  'ball',
-  'racket',
-  'sport',
-  'shoe',
-  'clothing',
-  'shirt',
-  'pants',
-  'jeans',
-  'dress',
-  'bottle',
-  'cup',
-  'glass',
-  'mug',
-  'plate',
-  'bowl',
-  'fork',
-  'knife',
-  'spoon',
-  'toy',
-  'doll',
-  'teddy',
-  'book',
-  'paper',
-  'pen',
-  'pencil',
-  'desk',
-  'furniture',
-  'pillow',
-  'blanket',
-  'curtain',
+  // Natural/biological items (prevent misclassification of nature/animals as e-waste)
+  'earthworm', 'worm', 'insect', 'bug', 'beetle', 'butterfly', 'moth', 'spider', 'fly', 'mosquito', 'ant', 'bee', 'wasp',
+  'caterpillar', 'snail', 'slug', 'frog', 'toad', 'lizard', 'snake', 'fish', 'shark', 'whale', 'dolphin', 'seal',
+  'nature', 'ground', 'soil', 'dirt', 'stone', 'rock', 'sand', 'gravel', 'leaf', 'leaves', 'twig',
+  'crate', 'carton', 'wooden box',
+  'table', 'chair', 'sofa', 'bed',
+  'person', 'human', 'people',
+  'cat', 'dog', 'bird', 'animal', 'pet',
+  'flower', 'plant', 'grass', 'bush', 'shrub',
+  'banana', 'apple', 'orange', 'food', 'fruit', 'vegetable', 'produce', 'crop',
+  'tree', 'forest', 'mountain', 'valley', 'hill',
+  'carpet', 'wood', 'wooden', 'fabric', 'cloth', 'textile',
+  'meat loaf', 'meatloaf', 'loaf', 'dough', 'bread', 'pizza', 'sandwich', 'burrito', 'taco', 'hot dog', 'hamburger', 'potpie', 'bakery',
+  'basketball', 'football', 'soccer', 'baseball', 'volleyball', 'tennis', 'ball', 'racket', 'sport',
+  'shoe', 'clothing', 'shirt', 'pants', 'jeans', 'dress', 'shoes', 'apparel',
+  'bottle', 'cup', 'glass', 'mug', 'plate', 'bowl', 'fork', 'knife', 'spoon',
+  'toy', 'doll', 'teddy', 'game',
+  'book', 'paper', 'pen', 'pencil', 'journal', 'notebook',
+  'desk', 'furniture', 'pillow', 'blanket', 'curtain', 'rug',
   // COCO non-ewaste classes
   'person',
   'bicycle',
@@ -776,6 +729,12 @@ function formatObjectName(label: string): string {
 
   if (!cleaned) return 'Electronic item'
 
+  // CRITICAL: Block non-e-waste items from being returned as object names
+  const normalized = normalizeLabel(cleaned)
+  if (hasAnyTerm(normalized, NON_EWASTE_TERMS)) {
+    return 'Electronic item'
+  }
+
   return cleaned
     .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -966,6 +925,11 @@ export async function detectEwaste(imageSource: string): Promise<AIDetectionResu
     const totalScore = Object.values(categoryScores).reduce((sum, score) => sum + Math.max(score, 0), 0)
 
     if (!Number.isFinite(totalScore) || totalScore <= 0 || bestScore <= 0) {
+      return detectEwasteLite(imageSource)
+    }
+
+    // If best evidence label is non-e-waste, force lite detection for more reliable fallback
+    if (bestEvidence && hasAnyTerm(normalizeLabel(bestEvidence.label), NON_EWASTE_TERMS)) {
       return detectEwasteLite(imageSource)
     }
 
