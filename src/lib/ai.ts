@@ -3,6 +3,7 @@
 
 import { EWASTE_CATEGORIES } from './types'
 import type { AIDetectionResult, CategoryId } from './types'
+import { getAIFeedbackSignal } from './aiFeedback'
 
 const AI_MODEL_VERSION = 'ewaste-ensemble-v3.3-consensus'
 const LITE_MODEL_VERSION = 'ewaste-lite-v3'
@@ -935,6 +936,26 @@ export async function detectEwaste(imageSource: string): Promise<AIDetectionResu
       matchedSignals++
     }
 
+    const feedbackSignal = getAIFeedbackSignal()
+    ;(Object.keys(categoryScores) as CategoryId[]).forEach((category) => {
+      const bias = clamp(feedbackSignal.categoryBias[category], -8, 12)
+      if (!bias) return
+      categoryScores[category] += bias * 3
+    })
+
+    const strongestEvidenceLabel = evidenceSignals
+      .slice()
+      .sort((a, b) => b.score - a.score)[0]?.label
+
+    if (strongestEvidenceLabel) {
+      const normalizedEvidence = normalizeLabel(strongestEvidenceLabel)
+      const correctedCategory = feedbackSignal.objectCorrection[normalizedEvidence]
+
+      if (correctedCategory) {
+        categoryScores[correctedCategory] += 22
+      }
+    }
+
     const sortedScores = (Object.entries(categoryScores) as Array<[CategoryId, number]>)
       .sort(([, scoreA], [, scoreB]) => scoreB - scoreA)
 
@@ -1048,7 +1069,15 @@ export async function detectEwasteLite(imageSource: string): Promise<AIDetection
       return createFallbackResult()
     }
 
-    const [best, ...rest] = inferences
+    const feedbackSignal = getAIFeedbackSignal()
+    const calibrated = inferences
+      .map((inference) => ({
+        ...inference,
+        confidence: inference.confidence + clamp(feedbackSignal.categoryBias[inference.category], -6, 10) * 2,
+      }))
+      .sort((a, b) => b.confidence - a.confidence)
+
+    const [best, ...rest] = calibrated
 
     return {
       detectedObjectName: getCategoryLabel(best.category),

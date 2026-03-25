@@ -14,6 +14,8 @@ import { detectReportChanges, getNotificationPermission, notifyUser, requestNoti
 import { ensurePushSubscription } from '@/lib/push'
 import { toast } from 'sonner'
 import { PullToRefresh } from '@/components/PullToRefresh'
+import { compressImageFile, fileToDataUrl } from '@/lib/image'
+import { requestCurrentLocation } from '@/lib/location'
 
 type Tab = 'home' | 'report' | 'history' | 'profile'
 type ReportStep = 'capture' | 'preview' | 'details' | 'success'
@@ -199,6 +201,8 @@ export default function CitizenApp({ onLogout }: CitizenAppProps) {
       reportId: report.$id,
       isCorrect: input.isCorrect,
       correctedCategory: input.correctedCategory,
+      predictedCategory: report.detectedCategory as CategoryId | undefined,
+      predictedObjectName: report.detectedObjectName,
       submittedAt: new Date().toISOString()
     }
 
@@ -423,40 +427,31 @@ function ReportTab({
 
   // Get location
   useEffect(() => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        },
-        (err) => {
-          setLocationError(
-            err.code === 1 ? 'Location access denied. Please enable GPS.' :
-            err.code === 2 ? 'Location unavailable. Try again.' :
-            'Could not get location.'
-          )
-          // Fallback to Pune center
-          setLocation({ lat: 18.5204, lng: 73.8567 })
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      )
-    } else {
-      setLocationError('GPS not supported on this device.')
-      setLocation({ lat: 18.5204, lng: 73.8567 })
-    }
+    requestCurrentLocation()
+      .then((result) => {
+        setLocation({ lat: result.lat, lng: result.lng })
+        setLocationError(result.source === 'cached' ? 'Using last known location. Pull to refresh for latest.' : '')
+      })
+      .catch((error) => {
+        setLocationError((error as Error)?.message || 'Could not get location.')
+        setLocation({ lat: 18.5204, lng: 73.8567 })
+      })
   }, [])
 
-  const handleCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      setPhotoFile(file)
-      const reader = new FileReader()
-      reader.onload = () => {
-        const base64 = reader.result as string
+      try {
+        const compressedFile = await compressImageFile(file)
+        setPhotoFile(compressedFile)
+        const base64 = await fileToDataUrl(compressedFile)
         setPhotoPreview(base64)
         setStep('preview')
         runAIDetection(base64)
+      } catch (error) {
+        console.error('Image preparation failed:', error)
+        setFormError('Could not process this image. Please try another photo.')
       }
-      reader.readAsDataURL(file)
     }
   }
 
@@ -502,6 +497,16 @@ function ReportTab({
       setUserOverride(true)
     } else {
       setUserOverride(false)
+    }
+  }
+
+  const refreshLocation = async () => {
+    try {
+      const result = await requestCurrentLocation()
+      setLocation({ lat: result.lat, lng: result.lng })
+      setLocationError(result.source === 'cached' ? 'Using last known location. Try again outdoors for GPS lock.' : '')
+    } catch (error) {
+      setLocationError((error as Error)?.message || 'Could not refresh location.')
     }
   }
 
@@ -811,7 +816,12 @@ function ReportTab({
                     <p className="text-sm text-amber-600">{locationError || 'Getting location...'}</p>
                   )}
                 </div>
-                {location && <Check className="w-5 h-5 text-primary-600" />}
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={refreshLocation} className="btn-secondary !min-h-0 px-2.5 py-1.5 text-xs">
+                    Refresh
+                  </button>
+                  {location && <Check className="w-5 h-5 text-primary-600" />}
+                </div>
               </div>
             </div>
 

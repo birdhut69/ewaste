@@ -2,6 +2,7 @@ import { Client, Account, Databases, Storage, ID, Query, Permission, Role } from
 import type { UserRole, AuthMode, Report, ReportStatus, StoredSession, AIDetectionResult, VerificationStatus } from './types'
 import { CreateReportSchema, EmailSchema, OtpSchema, PasswordSchema, PhoneSchema, UserRoleSchema } from './validation'
 import { clearAllData } from './db'
+import { compressImageFile } from './image'
 
 // Local storage keys
 const SESSION_KEY = 'ewaste_session'
@@ -710,17 +711,18 @@ export async function uploadPhoto(file: File, ownerUserId: string): Promise<stri
   }
 
   const permissions = buildPhotoPermissions(ownerUserId)
+  const compressedFile = await compressImageFile(file)
   try {
     let response
     try {
-      response = await storage.createFile(BUCKET_PHOTOS, ID.unique(), file, permissions)
+      response = await storage.createFile(BUCKET_PHOTOS, ID.unique(), compressedFile, permissions)
     } catch (error) {
       if (!isPermissionValidationError(error)) {
         throw error
       }
 
       // Retry without explicit ACL to support buckets that enforce backend defaults.
-      response = await storage.createFile(BUCKET_PHOTOS, ID.unique(), file)
+      response = await storage.createFile(BUCKET_PHOTOS, ID.unique(), compressedFile)
     }
 
     return response.$id

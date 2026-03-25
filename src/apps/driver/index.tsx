@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { toast } from 'sonner'
 import { PullToRefresh } from '@/components/PullToRefresh'
+import { requestCurrentLocation, startLocationTracking } from '@/lib/location'
 
 // Fix Leaflet icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -110,30 +111,29 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
 
   // Get current location
   useEffect(() => {
-    if ('geolocation' in navigator) {
-      const watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+    requestCurrentLocation()
+      .then((location) => {
+        setCurrentLocation({ lat: location.lat, lng: location.lng })
+        setLocationError(location.source === 'cached' ? 'Using last known location.' : '')
+      })
+      .catch((error) => {
+        setLocationError((error as Error)?.message || 'Could not get location')
+        setCurrentLocation({ lat: 18.5204, lng: 73.8567 })
+      })
+
+    const stopWatch = startLocationTracking(
+      (location) => {
+        setCurrentLocation({ lat: location.lat, lng: location.lng })
+        if (location.source === 'live') {
           setLocationError('')
-        },
-        (err) => {
-          setLocationError(
-            err.code === 1 ? 'Location access denied' :
-            err.code === 2 ? 'Location unavailable' :
-            'Could not get location'
-          )
-          // Fallback location
-          setCurrentLocation({ lat: 18.5204, lng: 73.8567 })
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      )
-      return () => navigator.geolocation.clearWatch(watchId)
-    } else {
-      // Geolocation not available, use fallback
-      setLocationError('GPS not supported')
-      setCurrentLocation({ lat: 18.5204, lng: 73.8567 })
-      return undefined
-    }
+        }
+      },
+      (message) => {
+        setLocationError(message)
+      }
+    )
+
+    return () => stopWatch()
   }, [])
 
   // Load pending reports
