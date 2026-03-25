@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Home, Plus, Clock, User, MapPin, Camera, ChevronRight, ChevronLeft, Check, RefreshCw, LogOut, WifiOff, Sparkles, AlertCircle, Brain, ThumbsUp, ThumbsDown, Bell } from 'lucide-react'
-import { createReport, uploadPhoto, logout, getLocalSession, getCurrentUserId, getMyReports, subscribeToReports, submitAIFeedback } from '@/lib/appwrite'
+import { createReport, uploadPhoto, logout, getLocalSession, getCurrentUserId, getMyReports, subscribeToReports, submitAIFeedback, invalidateReportsCache } from '@/lib/appwrite'
 import { savePendingReport, getPendingCount, markReportSynced } from '@/lib/db'
 import { timeAgo, getCategoryInfo, getStatusColor, getVerificationColor, generateId, isOnline } from '@/lib/utils'
-import { detectEwaste, detectEwasteLite } from '@/lib/ai'
+import { detectEwasteLite } from '@/lib/ai'
 import { EWASTE_CATEGORIES } from '@/lib/types'
 import { useAI } from '@/lib/aiProvider'
 import { CreateReportSchema } from '@/lib/validation'
@@ -13,6 +13,7 @@ import { getAllAIFeedback, saveAIFeedback } from '@/lib/aiFeedback'
 import { detectReportChanges, getNotificationPermission, notifyUser, requestNotificationPermission } from '@/lib/notifications'
 import { ensurePushSubscription } from '@/lib/push'
 import { toast } from 'sonner'
+import { PullToRefresh } from '@/components/PullToRefresh'
 
 type Tab = 'home' | 'report' | 'history' | 'profile'
 type ReportStep = 'capture' | 'preview' | 'details' | 'success'
@@ -33,18 +34,31 @@ export default function CitizenApp({ onLogout }: CitizenAppProps) {
   const [feedbackMap, setFeedbackMap] = useState<Record<string, { isCorrect: boolean; correctedCategory?: CategoryId; submittedAt: string }>>({})
   const { userName } = getLocalSession()
   const previousReportsRef = useRef<Report[] | null>(null)
+  const loadingRef = useRef(false)
+  const lastLoadTsRef = useRef(0)
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    const now = Date.now()
+    if (!force && loadingRef.current) return
+    if (!force && now - lastLoadTsRef.current < 1500) return
+
+    loadingRef.current = true
     try {
+      if (force) {
+        invalidateReportsCache()
+      }
+
       const [reportData, pending] = await Promise.all([
         getMyReports(),
         getPendingCount()
       ])
       setReports(reportData)
       setPendingCount(pending)
+      lastLoadTsRef.current = Date.now()
     } catch (err) {
       console.error('Failed to load data:', err)
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
   }, [])
@@ -73,11 +87,11 @@ export default function CitizenApp({ onLogout }: CitizenAppProps) {
   // Load data
   useEffect(() => {
     void loadData()
-  }, [activeTab, loadData])
+  }, [loadData])
 
   useEffect(() => {
     const unsubscribe = subscribeToReports(() => {
-      void loadData()
+      void loadData(true)
     })
 
     return () => unsubscribe()
@@ -86,12 +100,12 @@ export default function CitizenApp({ onLogout }: CitizenAppProps) {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        void loadData()
+        void loadData(true)
       }
     }
 
     const handleFocus = () => {
-      void loadData()
+      void loadData(true)
     }
 
     document.addEventListener('visibilitychange', handleVisibility)
@@ -173,6 +187,10 @@ export default function CitizenApp({ onLogout }: CitizenAppProps) {
     onLogout()
   }
 
+  const handleManualRefresh = async () => {
+    await loadData(true)
+  }
+
   const handleAIFeedback = async (report: Report, input: {
     isCorrect: boolean
     correctedCategory?: CategoryId
@@ -205,6 +223,7 @@ export default function CitizenApp({ onLogout }: CitizenAppProps) {
   }
 
   return (
+    <PullToRefresh onRefresh={handleManualRefresh}>
     <div className="min-h-screen role-citizen pb-24">
       {/* Offline Banner */}
       {!online && (
@@ -275,6 +294,7 @@ export default function CitizenApp({ onLogout }: CitizenAppProps) {
         </div>
       </nav>
     </div>
+    </PullToRefresh>
   )
 }
 
@@ -399,7 +419,7 @@ function ReportTab({
   const [aiDetecting, setAiDetecting] = useState(false)
   const [aiError, setAiError] = useState('')
   const [userOverride, setUserOverride] = useState(false)
-  const { modelStatus: aiModelStatus } = useAI()
+  const { modelStatus: aiModelStatus, detect } = useAI()
 
   // Get location
   useEffect(() => {
@@ -446,10 +466,10 @@ function ReportTab({
     setAiResult(null)
 
     try {
-      // Try full AI model first, fallback to lite version
+      // Provider path keeps model warm and yields better responsiveness.
       let result: AIDetectionResult
       try {
-        result = await detectEwaste(imageBase64)
+        result = await detect(imageBase64)
       } catch {
         result = await detectEwasteLite(imageBase64)
       }

@@ -32,6 +32,9 @@ export const COLL_USERS = 'users'
 export const COLL_PUSH_SUBSCRIPTIONS = 'push_subscriptions'
 export const BUCKET_PHOTOS = resolveEnv('VITE_APPWRITE_BUCKET_PHOTOS', 'photos')
 
+const REPORT_CACHE_TTL_MS = 8000
+const reportQueryCache = new Map<string, { expiresAt: number; value: Report[] }>()
+
 // Access control (must match `scripts/setup-appwrite.js`).
 // Citizens get access via per-document permissions (Role.user(citizenId)).
 // Drivers/PMC get access via team-based collection/document permissions.
@@ -392,6 +395,18 @@ export async function getReports(filters?: {
   limit?: number
   cursorAfter?: string
 }): Promise<Report[]> {
+  const cacheKey = JSON.stringify({
+    status: filters?.status || '',
+    citizenId: filters?.citizenId || '',
+    limit: filters?.limit ?? 100,
+    cursorAfter: filters?.cursorAfter || ''
+  })
+
+  const cached = reportQueryCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value
+  }
+
   try {
     const limit = Math.min(filters?.limit ?? 100, 500)
     const queries: string[] = [Query.orderDesc('$createdAt'), Query.limit(limit)]
@@ -426,6 +441,11 @@ export async function getReports(filters?: {
       }
     }) as unknown as Report[]
     
+    reportQueryCache.set(cacheKey, {
+      value: reports,
+      expiresAt: Date.now() + REPORT_CACHE_TTL_MS
+    })
+
     return reports
   } catch (error) {
     console.error('Failed to fetch from Appwrite:', error)
@@ -435,6 +455,10 @@ export async function getReports(filters?: {
     }
     throw new Error('Could not fetch reports from backend. Please try again.')
   }
+}
+
+export function invalidateReportsCache(): void {
+  reportQueryCache.clear()
 }
 
 export async function getMyReports(): Promise<Report[]> {
@@ -499,11 +523,14 @@ export async function createReport(data: {
       doc = await createReportDocumentWithFallback(reportData as unknown as Record<string, unknown>, [])
     }
 
-    return {
+    const created = {
       ...doc,
       createdAt: doc.createdAt || doc.$createdAt,
       photoUrl: validated.photoFileId ? storage.getFileView(BUCKET_PHOTOS, validated.photoFileId).href : undefined
     } as unknown as Report
+
+    invalidateReportsCache()
+    return created
   } catch (error) {
     console.error('Failed to create report:', error)
     if (shouldInvalidateSession(error)) {
@@ -522,6 +549,7 @@ export async function updateReportStatus(reportId: string, status: ReportStatus)
       updateData.collectedAt = new Date().toISOString()
     }
     await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, updateData)
+    invalidateReportsCache()
   } catch (error) {
     console.error(`Failed to update report ${reportId}:`, error)
     if (shouldInvalidateSession(error)) {
@@ -547,6 +575,7 @@ export async function updateReportVerification(reportId: string, input: {
 
   try {
     await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, payload)
+    invalidateReportsCache()
     return
   } catch (error) {
     const unknownAttribute = getUnknownAttribute(error)
@@ -561,6 +590,7 @@ export async function updateReportVerification(reportId: string, input: {
   const marker = `PMC verification: ${input.status}${input.notes ? ` | notes: ${input.notes}` : ''} | by ${verifier} | at ${verifiedAt}`
   const nextNotes = previousNotes ? `${previousNotes}\n${marker}` : marker
   await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, { notes: nextNotes })
+  invalidateReportsCache()
 }
 
 // Assign report to driver
@@ -569,6 +599,7 @@ export async function assignReport(reportId: string, driverId: string): Promise<
     assignedDriverId: driverId,
     status: 'assigned'
   })
+  invalidateReportsCache()
 }
 
 export async function submitAIFeedback(reportId: string, input: {
@@ -584,6 +615,7 @@ export async function submitAIFeedback(reportId: string, input: {
 
   try {
     await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, payload)
+    invalidateReportsCache()
     return
   } catch (error) {
     const unknownAttribute = getUnknownAttribute(error)
@@ -598,6 +630,7 @@ export async function submitAIFeedback(reportId: string, input: {
   const feedbackMarker = `AI feedback: ${input.isCorrect ? 'correct' : `incorrect (${input.correctedCategory || 'unspecified'})`} at ${feedbackAt}`
   const nextNotes = previousNotes ? `${previousNotes}\n${feedbackMarker}` : feedbackMarker
   await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, { notes: nextNotes })
+  invalidateReportsCache()
 }
 
 export async function checkBackendReachability(): Promise<{

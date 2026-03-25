@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Navigation, List, Map, CheckCircle, Clock, LogOut, Play, MapPin, Phone, ChevronRight, RefreshCw, WifiOff, Bell } from 'lucide-react'
-import { logout, getReports, updateReportStatus, getLocalSession, subscribeToReports } from '@/lib/appwrite'
+import { logout, getReports, updateReportStatus, getLocalSession, subscribeToReports, invalidateReportsCache } from '@/lib/appwrite'
 import { optimizeRoute, calculateRouteDistance, getCategoryInfo, getStatusColor, getVerificationColor, haversineDistance, isOnline } from '@/lib/utils'
 import type { Report } from '@/lib/types'
 import { detectReportChanges, getNotificationPermission, notifyUser, requestNotificationPermission } from '@/lib/notifications'
@@ -9,6 +9,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { toast } from 'sonner'
+import { PullToRefresh } from '@/components/PullToRefresh'
 
 // Fix Leaflet icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -51,11 +52,22 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
   const [notificationStatus, setNotificationStatus] = useState(getNotificationPermission())
   const { userName } = getLocalSession()
   const previousStopsRef = useRef<RouteStop[] | null>(null)
+  const loadingRef = useRef(false)
+  const lastLoadTsRef = useRef(0)
 
-  const loadStops = useCallback(async () => {
+  const loadStops = useCallback(async (force = false) => {
     if (!currentLocation) return
+    const now = Date.now()
+    if (!force && loadingRef.current) return
+    if (!force && now - lastLoadTsRef.current < 1500) return
+
+    loadingRef.current = true
 
     try {
+      if (force) {
+        invalidateReportsCache()
+      }
+
       const reports = await getReports()
       setLoadError('')
 
@@ -74,10 +86,12 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
       }))
 
       setStops(optimized as RouteStop[])
+      lastLoadTsRef.current = Date.now()
     } catch (err) {
       console.error('Failed to load stops:', err)
       setLoadError('Could not load pending pickups. Please check your connection and retry.')
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
   }, [currentLocation])
@@ -129,7 +143,7 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
 
   useEffect(() => {
     const unsubscribe = subscribeToReports(() => {
-      void loadStops()
+      void loadStops(true)
     })
 
     return () => unsubscribe()
@@ -138,12 +152,12 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        void loadStops()
+        void loadStops(true)
       }
     }
 
     const handleFocus = () => {
-      void loadStops()
+      void loadStops(true)
     }
 
     document.addEventListener('visibilitychange', handleVisibility)
@@ -154,6 +168,10 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
       window.removeEventListener('focus', handleFocus)
     }
   }, [loadStops])
+
+  const handleManualRefresh = async () => {
+    await loadStops(true)
+  }
 
   useEffect(() => {
     if (loading) return
@@ -251,6 +269,7 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
   const currentStop = routeStarted ? stops[currentStopIndex] : null
 
   return (
+    <PullToRefresh onRefresh={handleManualRefresh}>
     <div className="min-h-screen role-driver">
       {/* Offline Banner */}
       {!online && (
@@ -650,5 +669,6 @@ export default function DriverApp({ onLogout }: DriverAppProps) {
         </div>
       )}
     </div>
+    </PullToRefresh>
   )
 }

@@ -938,16 +938,33 @@ export async function detectEwaste(imageSource: string): Promise<AIDetectionResu
     const sortedScores = (Object.entries(categoryScores) as Array<[CategoryId, number]>)
       .sort(([, scoreA], [, scoreB]) => scoreB - scoreA)
 
-    const [bestCategory, bestScore] = sortedScores[0] ?? ['other', 0]
-    const secondScore = sortedScores[1]?.[1] ?? 0
+    const [initialBestCategory, bestScore] = sortedScores[0] ?? ['other', 0]
+    let bestCategory = initialBestCategory
+    const secondCandidate = sortedScores[1]
+    const secondScore = secondCandidate?.[1] ?? 0
     const totalScore = Object.values(categoryScores).reduce((sum, score) => sum + Math.max(score, 0), 0)
 
     if (!Number.isFinite(totalScore) || totalScore <= 0 || bestScore <= 0) {
       return detectEwasteLite(imageSource)
     }
 
-    const confidenceShare = bestScore / totalScore
-    const confidenceMargin = (bestScore - secondScore) / Math.max(bestScore, 1)
+    const promoteSecondFromOther =
+      bestCategory === 'other' &&
+      secondCandidate &&
+      secondCandidate[0] !== 'other' &&
+      secondScore >= bestScore * 0.72
+
+    if (promoteSecondFromOther) {
+      bestCategory = secondCandidate[0]
+    }
+
+    const effectiveBestScore = promoteSecondFromOther ? secondScore : bestScore
+    const effectiveSecondScore = promoteSecondFromOther
+      ? (sortedScores[2]?.[1] ?? bestScore)
+      : secondScore
+
+    const confidenceShare = effectiveBestScore / totalScore
+    const confidenceMargin = (effectiveBestScore - effectiveSecondScore) / Math.max(effectiveBestScore, 1)
     const signalStrength = Math.min(1, matchedSignals / 10)
 
     let confidence = Math.round(
@@ -958,6 +975,11 @@ export async function detectEwaste(imageSource: string): Promise<AIDetectionResu
     // Citizen UI auto-selects at >= 58, so cap "other" below that.
     if (bestCategory === 'other') {
       confidence = Math.min(confidence, 56)
+    }
+
+    if (promoteSecondFromOther) {
+      // Promotion improves category usefulness but remains conservative.
+      confidence = Math.min(confidence, 74)
     }
 
     if (confidenceShare < 0.24) {

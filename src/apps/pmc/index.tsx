@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Menu, X, AlertTriangle, TrendingUp, Clock, CheckCircle, Package, MapPin, Bell, ShieldCheck, ShieldX } from 'lucide-react'
-import { logout, getReports, getLocalSession, subscribeToReports, updateReportVerification } from '@/lib/appwrite'
+import { logout, getReports, getLocalSession, subscribeToReports, updateReportVerification, invalidateReportsCache } from '@/lib/appwrite'
 import { detectHotspots, getCategoryInfo, getStatusColor, getVerificationColor, timeAgo, formatDate } from '@/lib/utils'
 import { detectReportChanges, getNotificationPermission, notifyUser, requestNotificationPermission } from '@/lib/notifications'
 import { ensurePushSubscription } from '@/lib/push'
@@ -9,6 +9,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import { toast } from 'sonner'
+import { PullToRefresh } from '@/components/PullToRefresh'
 
 // Fix Leaflet icon issue
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -36,18 +37,31 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
   const [notificationStatus, setNotificationStatus] = useState(getNotificationPermission())
   const { userName } = getLocalSession()
   const previousReportsRef = useRef<Report[] | null>(null)
+  const loadingRef = useRef(false)
+  const lastLoadTsRef = useRef(0)
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    const now = Date.now()
+    if (!force && loadingRef.current) return
+    if (!force && now - lastLoadTsRef.current < 1500) return
+
+    loadingRef.current = true
     try {
+      if (force) {
+        invalidateReportsCache()
+      }
+
       const data = await getReports()
       setLoadError('')
       setReports(data)
       const spots = detectHotspots(data, 2, 2)
       setHotspots(spots)
+      lastLoadTsRef.current = Date.now()
     } catch (err) {
       console.error('Failed to load data:', err)
       setLoadError('Could not load dashboard data. Please check Appwrite configuration or network.')
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
   }, [])
@@ -56,7 +70,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
     void loadData()
 
     const unsubscribe = subscribeToReports(() => {
-      void loadData()
+      void loadData(true)
     })
 
     return () => unsubscribe()
@@ -65,12 +79,12 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        void loadData()
+        void loadData(true)
       }
     }
 
     const handleFocus = () => {
-      void loadData()
+      void loadData(true)
     }
 
     document.addEventListener('visibilitychange', handleVisibility)
@@ -81,6 +95,10 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
       window.removeEventListener('focus', handleFocus)
     }
   }, [loadData])
+
+  const handleManualRefresh = async () => {
+    await loadData(true)
+  }
 
   useEffect(() => {
     if (loading) return
@@ -213,6 +231,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
   ]
 
   return (
+    <PullToRefresh onRefresh={handleManualRefresh}>
     <div className="flex h-screen role-pmc">
       {/* Sidebar - Desktop */}
       <aside
@@ -369,6 +388,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
         )}
       </main>
     </div>
+    </PullToRefresh>
   )
 }
 
