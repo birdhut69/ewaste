@@ -696,7 +696,6 @@ function MapView({ reports, hotspots }: { reports: Report[]; hotspots: Hotspot[]
           center={center} 
           zoom={12} 
           style={{ height: '100%', width: '100%' }}
-          touch={true}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

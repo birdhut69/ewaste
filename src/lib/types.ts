@@ -33,6 +33,10 @@ export interface AIDetectionResult {
     category: CategoryId
     confidence: number
   }>
+  roboflowDetections?: Array<{
+    label: string
+    confidence: number
+  }>
 }
 
 export interface Report {
