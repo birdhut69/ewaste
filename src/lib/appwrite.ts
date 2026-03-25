@@ -156,6 +156,12 @@ function shouldInvalidateSession(error: unknown): boolean {
   return isUnauthorizedError(error) && !isPermissionValidationError(error)
 }
 
+function isBadRequestError(error: unknown): boolean {
+  const err = error as { code?: number; status?: number }
+  const code = err?.code ?? err?.status
+  return code === 400
+}
+
 function getUserRoleFromPrefs(prefs: unknown): UserRole | null {
   const role = (prefs as { role?: unknown })?.role
   const parsed = UserRoleSchema.safeParse(role)
@@ -702,18 +708,24 @@ export async function submitAIFeedback(reportId: string, input: {
     return
   } catch (error) {
     const unknownAttribute = getUnknownAttribute(error)
-    if (!unknownAttribute) {
+    // Some projects return generic 400 without unknown-attribute detail.
+    // Fall back to notes marker for both cases.
+    if (!unknownAttribute && !isBadRequestError(error)) {
       throw error
     }
   }
 
   // Fallback for projects where feedback attributes are not yet present.
-  const existing = await databases.getDocument(DB_ID, COLL_REPORTS, reportId) as unknown as Record<string, unknown>
-  const previousNotes = typeof existing.notes === 'string' ? existing.notes.trim() : ''
-  const feedbackMarker = `AI feedback: ${input.isCorrect ? 'correct' : `incorrect (${input.correctedCategory || 'unspecified'})`} at ${feedbackAt}`
-  const nextNotes = previousNotes ? `${previousNotes}\n${feedbackMarker}` : feedbackMarker
-  await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, { notes: nextNotes })
-  invalidateReportsCache()
+  try {
+    const existing = await databases.getDocument(DB_ID, COLL_REPORTS, reportId) as unknown as Record<string, unknown>
+    const previousNotes = typeof existing.notes === 'string' ? existing.notes.trim() : ''
+    const feedbackMarker = `AI feedback: ${input.isCorrect ? 'correct' : `incorrect (${input.correctedCategory || 'unspecified'})`} at ${feedbackAt}`
+    const nextNotes = previousNotes ? `${previousNotes}\n${feedbackMarker}` : feedbackMarker
+    await databases.updateDocument(DB_ID, COLL_REPORTS, reportId, { notes: nextNotes })
+    invalidateReportsCache()
+  } catch (fallbackError) {
+    throw new Error((fallbackError as { message?: string })?.message || 'Failed to submit AI feedback')
+  }
 }
 
 export async function checkBackendReachability(): Promise<{

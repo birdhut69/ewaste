@@ -41,9 +41,9 @@ export function PullToRefresh({ onRefresh, children, threshold = 72 }: PullToRef
     distanceRef.current = eased
     setPullDistance(eased)
 
-    if (rawDistance > 4) {
-      event.preventDefault()
-    }
+    // Avoid preventDefault on passive touch listeners (mobile browsers),
+    // which throws repeated console errors in some environments.
+    void event
   }
 
   const handleTouchEnd = async () => {
