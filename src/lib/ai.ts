@@ -989,30 +989,30 @@ export async function detectEwaste(imageSource: string): Promise<AIDetectionResu
     const signalStrength = Math.min(1, matchedSignals / 10)
 
     let confidence = Math.round(
-      18 + confidenceShare * 52 + confidenceMargin * 24 + signalStrength * 12
+      25 + confidenceShare * 60 + confidenceMargin * 20 + signalStrength * 18 + matchedSignals * 0.8
     )
+
+    // IF we have strong matched signals (classifier + detector agree), boost confidence
+    if (matchedSignals >= 3 && confidenceMargin > 0.15) {
+      confidence = Math.min(confidence + 12, 97)
+    }
 
     // Prevent "other" from being auto-selected as a real category.
     // Citizen UI auto-selects at >= 58, so cap "other" below that.
     if (bestCategory === 'other') {
-      confidence = Math.min(confidence, 56)
-    }
-
-    if (promoteSecondFromOther) {
-      // Promotion improves category usefulness but remains conservative.
-      confidence = Math.min(confidence, 74)
-    }
-
-    if (confidenceShare < 0.24) {
-      confidence = Math.min(confidence, 48)
-    }
-
-    // If signals are weak and detector did not provide support, avoid overconfident false positives.
-    if (confidenceMargin < 0.2 && signalStrength < 0.2 && detections.length === 0) {
       confidence = Math.min(confidence, 52)
     }
 
-    confidence = clamp(confidence, 18, 97)
+    if (promoteSecondFromOther) {
+      // Promotion improves category usefulness - be more confident when we promote from "other"
+      confidence = Math.min(confidence + 8, 85)
+    }
+
+    if (confidenceShare < 0.20) {
+      confidence = Math.min(confidence, 46)
+    }
+
+    confidence = clamp(confidence, 20, 97)
 
     const bestEvidence = evidenceSignals
       .sort((a, b) => b.score - a.score)
@@ -1073,7 +1073,7 @@ export async function detectEwasteLite(imageSource: string): Promise<AIDetection
     const calibrated = inferences
       .map((inference) => ({
         ...inference,
-        confidence: inference.confidence + clamp(feedbackSignal.categoryBias[inference.category], -6, 10) * 2,
+        confidence: clamp(inference.confidence + clamp(feedbackSignal.categoryBias[inference.category], -4, 8) * 3, 15, 90),
       }))
       .sort((a, b) => b.confidence - a.confidence)
 
@@ -1082,11 +1082,11 @@ export async function detectEwasteLite(imageSource: string): Promise<AIDetection
     return {
       detectedObjectName: getCategoryLabel(best.category),
       detectedCategory: best.category,
-      confidenceScore: clamp(Math.round(best.confidence * 0.9), 35, 76),
+      confidenceScore: clamp(Math.round(best.confidence), 48, 78),
       aiModelVersion: LITE_MODEL_VERSION,
       alternativePredictions: rest.map(inference => ({
         category: inference.category,
-        confidence: clamp(Math.round(inference.confidence * 0.8), 8, 45)
+        confidence: clamp(Math.round(inference.confidence * 0.85), 12, 50)
       }))
     }
   } catch (error) {

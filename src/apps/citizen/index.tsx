@@ -19,9 +19,9 @@ import { requestCurrentLocation } from '@/lib/location'
 
 type Tab = 'home' | 'report' | 'history' | 'profile'
 type ReportStep = 'capture' | 'preview' | 'details' | 'success'
-const AI_AUTO_SELECT_THRESHOLD = 58
-const AI_SUGGESTION_THRESHOLD = 45
-const AI_HIGH_CONFIDENCE_THRESHOLD = 75
+const AI_AUTO_SELECT_THRESHOLD = 52
+const AI_SUGGESTION_THRESHOLD = 42
+const AI_HIGH_CONFIDENCE_THRESHOLD = 70
 
 interface CitizenAppProps {
   onLogout: () => void
@@ -430,10 +430,12 @@ function ReportTab({
     requestCurrentLocation()
       .then((result) => {
         setLocation({ lat: result.lat, lng: result.lng })
-        setLocationError(result.source === 'cached' ? 'Using last known location. Pull to refresh for latest.' : '')
+        setLocationError(result.source === 'cached' ? 'Using last known location. Refresh for latest GPS.' : '')
       })
       .catch((error) => {
-        setLocationError((error as Error)?.message || 'Could not get location.')
+        const msg = (error as Error)?.message || 'Could not get location.'
+        setLocationError(msg)
+        // Always provide a fallback location so form can submit
         setLocation({ lat: 18.5204, lng: 73.8567 })
       })
   }, [])
