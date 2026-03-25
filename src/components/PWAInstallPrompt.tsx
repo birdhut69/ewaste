@@ -24,18 +24,12 @@ function isIOSDevice(): boolean {
 
 export function PWAInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
-  const [isInstalled, setIsInstalled] = useState(false)
-  const [dismissed, setDismissed] = useState(false)
+  const [isInstalled, setIsInstalled] = useState(() => isStandaloneMode())
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === '1')
   const [showIOSGuide, setShowIOSGuide] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
+  const [isIOS] = useState(() => isIOSDevice())
 
   useEffect(() => {
-    setIsInstalled(isStandaloneMode())
-    setIsIOS(isIOSDevice())
-
-    const initiallyDismissed = localStorage.getItem(DISMISS_KEY) === '1'
-    setDismissed(initiallyDismissed)
-
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault()
       setDeferredPrompt(event as BeforeInstallPromptEvent)
