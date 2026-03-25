@@ -5,6 +5,7 @@ import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AIProvider } from './lib/aiProvider'
+import { AIProvider } from './lib/aiProviderEnhanced'
 import { AppToaster } from './components/AppToaster'
 import { registerSW } from 'virtual:pwa-register'
 

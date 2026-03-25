@@ -91,7 +91,11 @@ export interface Zone {
     south: number
     east: number
     west: number
-  }
+  roboflowDetections?: Array<{
+    label: string
+    confidence: number
+  }>
+}
   assignedDriverId?: string
 }
 
