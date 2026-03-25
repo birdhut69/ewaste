@@ -345,6 +345,7 @@ const NON_EWASTE_TERMS = [
 let modelInstance: ModelBundle | null = null
 let modelLoadingPromise: Promise<ModelBundle> | null = null
 let modelStatus: 'not-loaded' | 'loading' | 'loaded' | 'failed' = 'not-loaded'
+let hasLoggedCocoUnavailable = false
 
 function createEmptyCategoryScores(): Record<CategoryId, number> {
   return {
@@ -557,7 +558,10 @@ async function loadModel(): Promise<ModelBundle> {
         const cocoSsd = await dynamicImport<any>(cocoSsdUrl)
         detector = await cocoSsd.load({ base: 'mobilenet_v2' })
       } catch (detectorError) {
-        console.warn('COCO detector unavailable, continuing with classifier only:', detectorError)
+        if (!hasLoggedCocoUnavailable) {
+          hasLoggedCocoUnavailable = true
+          console.warn('COCO detector unavailable, continuing with classifier-only mode.')
+        }
       }
 
       modelInstance = {
@@ -928,8 +932,8 @@ export async function detectEwaste(imageSource: string): Promise<AIDetectionResu
       return detectEwasteLite(imageSource)
     }
 
-    // If best evidence label is non-e-waste, force lite detection for more reliable fallback
-    if (bestEvidence && hasAnyTerm(normalizeLabel(bestEvidence.label), NON_EWASTE_TERMS)) {
+    // If strongest evidence label is non-e-waste, force lite detection for more reliable fallback
+    if (strongestEvidenceLabel && hasAnyTerm(normalizeLabel(strongestEvidenceLabel), NON_EWASTE_TERMS)) {
       return detectEwasteLite(imageSource)
     }
 

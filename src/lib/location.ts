@@ -46,6 +46,10 @@ function getCurrentPosition(opts: PositionOptions): Promise<GeolocationPosition>
   })
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function requestCurrentLocation(options?: LocationOptions): Promise<DeviceLocation> {
   if (!('geolocation' in navigator)) {
     const fallback = getLastKnownLocation()
@@ -74,6 +78,28 @@ export async function requestCurrentLocation(options?: LocationOptions): Promise
     saveLastLocation(location)
     return location
   } catch (highError) {
+    // iOS can intermittently return kCLErrorLocationUnknown; retry once before degrading.
+    try {
+      await sleep(600)
+      const retryHigh = await getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: Math.max(3000, Math.floor(highAccuracyTimeoutMs * 0.8)),
+        maximumAge: 0,
+      })
+
+      const retryLocation: DeviceLocation = {
+        lat: retryHigh.coords.latitude,
+        lng: retryHigh.coords.longitude,
+        accuracy: retryHigh.coords.accuracy,
+        timestamp: Date.now(),
+        source: 'live',
+      }
+      saveLastLocation(retryLocation)
+      return retryLocation
+    } catch {
+      // Continue to low accuracy fallback below.
+    }
+
     try {
       const low = await getCurrentPosition({
         enableHighAccuracy: false,

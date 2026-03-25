@@ -215,6 +215,76 @@ function parseVerificationFromNotes(notes?: string): {
   }
 }
 
+function composeNotesWithAISnapshot(input: {
+  notes?: string
+  detectedObjectName?: string
+  detectedCategory?: string
+  confidenceScore?: number
+  aiModelVersion?: string
+}): string | undefined {
+  const base = (input.notes || '').trim()
+  if (!input.detectedObjectName && !input.detectedCategory && typeof input.confidenceScore !== 'number') {
+    return base || undefined
+  }
+
+  const objectName = (input.detectedObjectName || 'unknown').replace(/[|\n\r]/g, ' ').trim().slice(0, 64)
+  const category = (input.detectedCategory || 'other').replace(/[|\n\r]/g, ' ').trim().slice(0, 24)
+  const confidence = Number.isFinite(input.confidenceScore) ? Math.max(0, Math.min(100, Math.round(input.confidenceScore as number))) : 0
+  const model = (input.aiModelVersion || 'unknown').replace(/[|\n\r]/g, ' ').trim().slice(0, 48)
+
+  const marker = `AI snapshot: obj=${objectName} | cat=${category} | conf=${confidence} | model=${model}`
+  if (base.includes('AI snapshot:')) {
+    return base
+  }
+
+  const combined = base ? `${base}\n${marker}` : marker
+  return combined.slice(0, 1000)
+}
+
+function parseAISnapshotFromNotes(notes?: string): {
+  detectedObjectName?: string
+  detectedCategory?: string
+  confidenceScore?: number
+  aiModelVersion?: string
+} {
+  if (!notes) return {}
+  const marker = notes
+    .split('\n')
+    .map((line) => line.trim())
+    .find((line) => line.startsWith('AI snapshot:'))
+
+  if (!marker) return {}
+
+  const objectMatch = marker.match(/obj=([^|]+)/i)
+  const categoryMatch = marker.match(/cat=([^|]+)/i)
+  const confMatch = marker.match(/conf=([^|]+)/i)
+  const modelMatch = marker.match(/model=([^|]+)/i)
+
+  const parsedConfidence = Number(confMatch?.[1]?.trim())
+
+  return {
+    detectedObjectName: objectMatch?.[1]?.trim(),
+    detectedCategory: categoryMatch?.[1]?.trim(),
+    confidenceScore: Number.isFinite(parsedConfidence) ? parsedConfidence : undefined,
+    aiModelVersion: modelMatch?.[1]?.trim()
+  }
+}
+
+function stripSystemMarkersFromNotes(notes?: string): string | undefined {
+  if (!notes) return undefined
+  const cleaned = notes
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) =>
+      !line.startsWith('PMC verification:') &&
+      !line.startsWith('AI feedback:') &&
+      !line.startsWith('AI snapshot:')
+    )
+    .join('\n')
+    .trim()
+  return cleaned || undefined
+}
+
 async function createReportDocumentWithFallback(
   reportData: Record<string, unknown>,
   permissions: string[]
@@ -429,12 +499,18 @@ export async function getReports(filters?: {
     // Map Appwrite documents to our Report type
     const reports = response.documents.map(doc => {
       const verificationFallback = parseVerificationFromNotes(typeof doc.notes === 'string' ? doc.notes : undefined)
+      const aiFallback = parseAISnapshotFromNotes(typeof doc.notes === 'string' ? doc.notes : undefined)
 
       return {
         ...doc,
         createdAt: (doc as Record<string, unknown>).createdAt || (doc as Record<string, unknown>).$createdAt,
+        notes: stripSystemMarkersFromNotes(typeof doc.notes === 'string' ? doc.notes : undefined),
         // Ensure photoUrl is generated if photoFileId exists
         photoUrl: doc.photoFileId ? storage.getFileView(BUCKET_PHOTOS, doc.photoFileId).href : undefined,
+        detectedObjectName: (doc.detectedObjectName as string | undefined) || aiFallback.detectedObjectName,
+        detectedCategory: (doc.detectedCategory as string | undefined) || aiFallback.detectedCategory,
+        confidenceScore: (doc.confidenceScore as number | undefined) ?? aiFallback.confidenceScore,
+        aiModelVersion: (doc.aiModelVersion as string | undefined) || aiFallback.aiModelVersion,
         verificationStatus: (doc.verificationStatus as VerificationStatus | undefined) || verificationFallback.verificationStatus || 'pending-review',
         verifiedBy: (doc.verifiedBy as string | undefined) || verificationFallback.verifiedBy,
         verifiedAt: (doc.verifiedAt as string | undefined) || verificationFallback.verifiedAt,
@@ -501,7 +577,13 @@ export async function createReport(data: {
     longitude: validated.longitude,
     category: validated.category,
     status: 'pending' as ReportStatus,
-    notes: validated.notes,
+    notes: composeNotesWithAISnapshot({
+      notes: validated.notes,
+      detectedObjectName: validated.detectedObjectName,
+      detectedCategory: validated.detectedCategory,
+      confidenceScore: validated.confidenceScore,
+      aiModelVersion: validated.aiModelVersion
+    }),
     photoFileId: validated.photoFileId,
     detectedObjectName: validated.detectedObjectName,
     detectedCategory: validated.detectedCategory,
@@ -681,6 +763,16 @@ export async function checkBackendReachability(): Promise<{
 
 // Realtime report subscription for live dashboards and route updates.
 export function subscribeToReports(onChange: () => void): () => void {
+  // In local development, Appwrite will reject realtime when localhost is not
+  // added as a Web Platform origin. Avoid noisy reconnect loops in that case.
+  const host = window.location.hostname
+  if (host === 'localhost' || host === '127.0.0.1') {
+    console.warn(
+      'Realtime disabled on localhost. Add this origin in Appwrite Platforms to enable live updates.'
+    )
+    return () => {}
+  }
+
   const channel = `databases.${DB_ID}.collections.${COLL_REPORTS}.documents`
 
   try {
