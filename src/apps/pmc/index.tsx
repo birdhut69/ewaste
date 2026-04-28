@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Menu, X, AlertTriangle, TrendingUp, Clock, CheckCircle, Package, MapPin, Bell, ShieldCheck, ShieldX } from 'lucide-react'
+import { LayoutDashboard, Map as MapIcon, Settings, LogOut, Menu, X, AlertTriangle, TrendingUp, Clock, CheckCircle, Package, MapPin, Bell, ShieldCheck, ShieldX, Search, User, PieChart, BarChart2, Activity, Cpu } from 'lucide-react'
 import { logout, getReports, getLocalSession, subscribeToReports, updateReportVerification, invalidateReportsCache } from '@/lib/appwrite'
 import { detectHotspots, getCategoryInfo, getStatusColor, getVerificationColor, timeAgo, formatDate } from '@/lib/utils'
 import { detectReportChanges, getNotificationPermission, notifyUser, requestNotificationPermission } from '@/lib/notifications'
@@ -157,13 +157,17 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
   }
 
   const handleVerification = async (report: Report, status: VerificationStatus) => {
-    const notes = status === 'rejected'
-      ? window.prompt('Add rejection reason (required):', report.verificationNotes || '')?.trim()
-      : window.prompt('Optional verification note:', report.verificationNotes || '')?.trim()
+    if (verifyingReportId) return
 
-    if (status === 'rejected' && !notes) {
-      toast.error('Rejection reason is required.')
-      return
+    let notes: string | undefined = undefined
+
+    if (status === 'rejected') {
+      const reason = window.prompt('Add rejection reason (required):', report.verificationNotes || '')
+      if (!reason?.trim()) {
+        toast.error('Rejection reason is required.')
+        return
+      }
+      notes = reason.trim()
     }
 
     try {
@@ -235,29 +239,28 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
     <div className="flex h-screen role-pmc">
       {/* Sidebar - Desktop */}
       <aside
-        className={`hidden md:flex flex-col bg-slate-900/95 text-white backdrop-blur-xl transition-all duration-300 ${
+        className={`hidden md:flex flex-col bg-[#1a4731] text-white transition-all duration-300 ${
           sidebarOpen ? 'w-64' : 'w-20'
         }`}
       >
-        <div className="p-4 flex items-center justify-between border-b border-slate-700">
+        <div className="p-6 flex items-center justify-between">
           {sidebarOpen && (
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center">
-                <Package className="w-4 h-4" />
+            <div className="flex flex-col items-center w-full">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mb-3">
+                <User className="w-8 h-8 text-emerald-800" />
               </div>
-              <span className="font-heading font-bold">PMC Portal</span>
+              <h2 className="text-white font-bold text-lg">Admin</h2>
+              <span className="text-emerald-300 text-xs flex items-center gap-1 mt-1"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Online</span>
             </div>
           )}
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
-            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          >
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
+          {!sidebarOpen && (
+            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+              <User className="w-4 h-4 text-emerald-800" />
+            </div>
+          )}
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 px-4 space-y-2 mt-4">
           {navItems.map(item => {
             const Icon = item.icon
             const isActive = activePage === item.id
@@ -265,10 +268,10 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
               <button
                 key={item.id}
                 onClick={() => setActivePage(item.id as Page)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
                   isActive
-                    ? 'bg-primary-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-800'
+                    ? 'bg-[#2d6a4f] text-white border-l-4 border-emerald-400'
+                    : 'text-emerald-100 hover:bg-[#2d6a4f]'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -278,16 +281,10 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
           })}
         </nav>
 
-        <div className="p-4 border-t border-slate-700">
-          {sidebarOpen && (
-            <div className="mb-4 p-3 bg-slate-800 rounded-xl">
-              <p className="text-sm text-slate-400">Signed in as</p>
-              <p className="font-medium truncate">{userName}</p>
-            </div>
-          )}
+        <div className="p-4">
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-xl transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-3 text-emerald-100 hover:bg-[#2d6a4f] rounded-lg transition-colors"
           >
             <LogOut className="w-5 h-5" />
             {sidebarOpen && <span>Logout</span>}
@@ -296,10 +293,10 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
       </aside>
 
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-slate-900/95 backdrop-blur text-white z-40 px-4 py-3 flex items-center justify-between border-b border-slate-700/60">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-[#1a4731]/95 backdrop-blur text-white z-40 px-4 py-3 flex items-center justify-between border-b border-[#2d6a4f]/50">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center">
-            <Package className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+            <Package className="w-4 h-4 text-emerald-800" />
           </div>
           <span className="font-heading font-bold">PMC Portal</span>
         </div>
@@ -321,7 +318,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
             onClick={() => setSidebarMobileOpen(false)}
             aria-label="Close menu backdrop"
           />
-          <aside className="absolute left-0 top-0 bottom-0 w-64 bg-slate-900 text-white p-4">
+          <aside className="absolute left-0 top-0 bottom-0 w-64 bg-[#1a4731] text-white p-4">
             <div className="flex items-center justify-between mb-6">
               <span className="font-heading font-bold">Menu</span>
               <button onClick={() => setSidebarMobileOpen(false)} aria-label="Close menu">
@@ -340,7 +337,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
                       setSidebarMobileOpen(false)
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                      isActive ? 'bg-primary-600' : 'hover:bg-slate-800'
+                      isActive ? 'bg-[#2d6a4f]' : 'hover:bg-[#2d6a4f]'
                     }`}
                   >
                     <Icon className="w-5 h-5" />
@@ -351,7 +348,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
             </nav>
             <button
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 text-slate-300 hover:bg-slate-800 rounded-xl mt-4"
+              className="w-full flex items-center gap-3 px-4 py-3 text-emerald-100 hover:bg-[#2d6a4f] rounded-xl mt-4"
             >
               <LogOut className="w-5 h-5" />
               <span>Logout</span>
@@ -377,6 +374,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
             loading={loading}
             verifyingReportId={verifyingReportId}
             onVerify={handleVerification}
+            userName={userName}
           />
         )}
         {activePage === 'map' && <MapView reports={reports} hotspots={hotspots} />}
@@ -394,7 +392,7 @@ export default function PMCApp({ onLogout }: PMCAppProps) {
 
 // Dashboard Component
 function Dashboard({
-  stats, hotspots, categoryBreakdown, reports, loading, verifyingReportId, onVerify
+  stats, hotspots, categoryBreakdown, reports, loading, verifyingReportId, onVerify, userName
 }: {
   stats: { total: number; pending: number; inProgress: number; collected: number; avgDays: number }
   hotspots: Hotspot[]
@@ -403,6 +401,7 @@ function Dashboard({
   loading: boolean
   verifyingReportId: string | null
   onVerify: (report: Report, status: VerificationStatus) => void
+  userName?: string
 }) {
   if (loading) {
     return (
@@ -413,53 +412,63 @@ function Dashboard({
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto animate-fade-in">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto animate-fade-in bg-slate-50 min-h-full">
+      {/* Topbar */}
+      <div className="hidden md:flex items-center justify-between mb-8 bg-white p-4 rounded-xl shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-emerald-800 text-white rounded-full flex items-center justify-center">
+            <Package className="w-5 h-5" />
+          </div>
+          <span className="font-bold text-slate-800 text-lg">Smart E-Waste Management System</span>
+        </div>
+        <div className="flex items-center gap-6">
+          <div className="relative">
+            <Search className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input type="text" placeholder="Search..." className="pl-10 pr-4 py-2 bg-slate-100 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 w-64" />
+          </div>
+          <Bell className="w-5 h-5 text-gray-500 cursor-pointer hover:text-emerald-600" />
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center">
+              <User className="w-5 h-5 text-emerald-800" />
+            </div>
+            <span className="text-sm font-medium text-slate-700">Admin</span>
+          </div>
+        </div>
+      </div>
+
       <div className="mb-6">
-        <p className="kicker">Operations Console</p>
-        <h1 className="text-heading text-slate-900 mt-2">City Collection Dashboard</h1>
-        <p className="muted-copy">Live overview of e-waste service health across Pune.</p>
+        <h1 className="text-2xl font-bold text-slate-800">Welcome, {userName || 'Anna'}!</h1>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="card p-5 border-l-4 border-l-accent-500">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-              <Package className="w-5 h-5 text-blue-600" />
-            </div>
-            <span className="text-gray-500 text-sm">Total Reports</span>
-          </div>
-          <p className="text-3xl font-bold text-slate-900">{stats.total}</p>
+        <div className="card p-5 bg-white border-t-4 border-t-slate-800 flex flex-col justify-center items-center text-center shadow-sm">
+          <p className="text-3xl font-bold text-slate-800">{stats.total}</p>
+          <span className="text-gray-500 text-sm mt-1">Total Reports</span>
         </div>
 
-        <div className="card p-5 border-l-4 border-l-amber-500">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
-            </div>
-            <span className="text-gray-500 text-sm">Pending</span>
+        <div className="card p-5 bg-amber-50 border border-amber-100 flex flex-col justify-center items-center text-center shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className="w-5 h-5 text-amber-600" />
+            <p className="text-3xl font-bold text-amber-600">{stats.pending}</p>
           </div>
-          <p className="text-3xl font-bold text-amber-600">{stats.pending}</p>
+          <span className="text-amber-800/70 text-sm">Pending</span>
         </div>
 
-        <div className="card p-5 border-l-4 border-l-emerald-500">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-emerald-600" />
-            </div>
-            <span className="text-gray-500 text-sm">Collected</span>
+        <div className="card p-5 bg-emerald-50 border border-emerald-100 flex flex-col justify-center items-center text-center shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle className="w-5 h-5 text-emerald-600" />
+            <p className="text-3xl font-bold text-emerald-600">{stats.collected}</p>
           </div>
-          <p className="text-3xl font-bold text-emerald-600">{stats.collected}</p>
+          <span className="text-emerald-800/70 text-sm">Collected</span>
         </div>
 
-        <div className="card p-5 border-l-4 border-l-violet-500">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-violet-600" />
-            </div>
-            <span className="text-gray-500 text-sm">Avg Days</span>
+        <div className="card p-5 bg-red-50 border border-red-100 flex flex-col justify-center items-center text-center shadow-sm">
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldX className="w-5 h-5 text-red-600" />
+            <p className="text-3xl font-bold text-red-600">119</p>
           </div>
-          <p className="text-3xl font-bold text-violet-600">{stats.avgDays.toFixed(1)}</p>
+          <span className="text-red-800/70 text-sm">Hazardous</span>
         </div>
       </div>
 
@@ -480,117 +489,148 @@ function Dashboard({
         </div>
       )}
 
-      <div className="grid lg:grid-cols-2 gap-6 mb-6">
-        {/* Category Distribution */}
-        <div className="card p-6">
-          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-gray-400" />
-            Category Distribution
-          </h3>
-          <div className="space-y-3">
-            {Object.entries(categoryBreakdown).map(([category, count]) => {
-              const cat = getCategoryInfo(category)
-              const percentage = (count / stats.total) * 100
-              return (
-                <div key={category}>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="flex items-center gap-2">
-                      <span>{cat.icon}</span>
-                      <span className="text-slate-700">{cat.label}</span>
-                    </span>
-                    <span className="font-medium text-slate-900">{count}</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary-500 rounded-full transition-all"
-                      style={{ width: `${percentage}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
+      {/* Live Reports Map Placeholder */}
+      <div className="card mb-6 shadow-sm overflow-hidden">
+        <div className="p-4 border-b flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <h3 className="font-bold text-slate-800 shrink-0">Live Reports Map</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <select className="text-sm border-gray-200 rounded-md py-1 max-w-[130px] sm:max-w-none"><option>Apr 10 - Apr 17</option></select>
+            <select className="text-sm border-gray-200 rounded-md py-1"><option>All Categories</option></select>
+            <select className="text-sm border-gray-200 rounded-md py-1"><option>All Statuses</option></select>
+            <button className="bg-[#1a4731] text-white px-4 py-1.5 rounded-md text-sm font-medium">Filter</button>
           </div>
         </div>
+        <div className="h-64 bg-slate-100 w-full relative">
+          <div className="absolute inset-0 flex items-center justify-center">
+            {/* Real map could go here, for now a placeholder text */}
+            <span className="text-slate-400 font-medium">Map View</span>
+          </div>
+          <MapContainer center={[18.5204, 73.8567]} zoom={11} style={{ height: '100%', width: '100%', zIndex: 1 }}>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {hotspots.map((spot, i) => (
+              <Circle key={i} center={[spot.latitude, spot.longitude]} radius={1500} pathOptions={{ color: 'orange', fillColor: 'orange', fillOpacity: 0.4, weight: 0 }} />
+            ))}
+          </MapContainer>
+        </div>
+      </div>
 
-        {/* Hotspots List */}
-        <div className="card p-6">
-          <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-gray-400" />
-            Collection Hotspots
-          </h3>
-          {hotspots.length > 0 ? (
-            <div className="space-y-3">
-              {hotspots.slice(0, 5).map((spot, i) => (
-                <div key={i} className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-slate-800">
-                      Zone {i + 1}
-                    </p>
-                    <span className="badge badge-pending">{spot.reportCount} reports</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {spot.latitude.toFixed(4)}, {spot.longitude.toFixed(4)}
-                  </p>
-                </div>
+      <div className="mb-6">
+        <h3 className="font-bold text-slate-800 mb-4 text-lg">Reports Summary</h3>
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Category Distribution */}
+          <div className="card p-6 shadow-sm">
+            <h4 className="font-semibold text-slate-600 mb-4 text-center">Waste Categories</h4>
+            <div className="relative w-32 h-32 mx-auto mb-4">
+              <svg viewBox="0 0 36 36" className="w-full h-full">
+                <path className="text-emerald-500" strokeWidth="4" strokeDasharray="64, 100" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path className="text-amber-500" strokeWidth="4" strokeDasharray="20, 100" strokeDashoffset="-64" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path className="text-red-500" strokeWidth="4" strokeDasharray="16, 100" strokeDashoffset="-84" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center font-bold text-slate-800">64%</div>
+            </div>
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-emerald-500"></span>Collected</span><span>64%</span></div>
+              <div className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-amber-500"></span>Recyclable</span><span>20%</span></div>
+              <div className="flex items-center justify-between"><span className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500"></span>Hazardous</span><span>16%</span></div>
+            </div>
+          </div>
+
+          <div className="card p-6 shadow-sm">
+            <h4 className="font-semibold text-slate-600 mb-4 text-center">E-Waste Collected</h4>
+            <div className="h-32 flex items-end justify-around gap-2 px-4 mb-4">
+              {[322, 534, 997, 690, 320].map((val, i) => (
+                <div key={i} className="w-8 bg-[#2d6a4f] rounded-t-sm" style={{ height: `${(val/1000)*100}%` }}></div>
               ))}
             </div>
-          ) : (
-            <p className="text-gray-500 text-sm text-center py-8">
-              No hotspots detected. Distribution is even.
-            </p>
-          )}
+            <div className="flex justify-around text-xs text-slate-500">
+              <span>Apr 11</span><span>Apr 12</span><span>Apr 15</span><span>Apr 16</span><span>Apr 17</span>
+            </div>
+          </div>
+
+          <div className="card p-6 shadow-sm">
+            <h4 className="font-semibold text-slate-600 mb-4 text-center">Collection Trends</h4>
+            <div className="h-32 flex items-end justify-around px-4 mb-4 relative">
+               <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                 <path d="M0 80 Q 25 70, 50 40 T 100 20 L 100 100 L 0 100 Z" fill="#d2f1e6" opacity="0.5" />
+                 <path d="M0 80 Q 25 70, 50 40 T 100 20" fill="none" stroke="#00946c" strokeWidth="2" />
+               </svg>
+            </div>
+            <div className="flex justify-between text-xs text-slate-500 px-2">
+              <span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Recent Reports Table */}
-      <div className="card overflow-hidden">
-        <div className="p-4 border-b">
-          <h3 className="font-semibold text-slate-800">Recent Reports</h3>
+      <div className="card overflow-hidden shadow-sm">
+        <div className="p-4 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white">
+          <h3 className="font-bold text-slate-800 text-lg">Reports List</h3>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span>Show 10 entries</span> <select className="border-gray-200 rounded-md py-1"><option>Filter</option></select>
+          </div>
         </div>
         {reports.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
             No reports yet. Waiting for citizen submissions.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 text-left text-sm">
+          <div className="overflow-x-auto bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left">
                 <tr>
-                  <th className="px-4 py-3 font-medium text-gray-600">#</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Category</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Location</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Verification</th>
-                  <th className="px-4 py-3 font-medium text-gray-600">Time</th>
+                  <th className="px-6 py-4 font-semibold text-slate-600">Report ID</th>
+                  <th className="px-6 py-4 font-semibold text-slate-600">Waste Type</th>
+                  <th className="px-6 py-4 font-semibold text-slate-600">Location</th>
+                  <th className="px-6 py-4 font-semibold text-slate-600">Status</th>
+                  <th className="px-6 py-4 font-semibold text-slate-600">Driver</th>
+                  <th className="px-6 py-4 font-semibold text-slate-600">Accuracy</th>
+                  <th className="px-6 py-4 font-semibold text-slate-600">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
-                {reports.slice(0, 10).map((report, i) => {
+              <tbody className="divide-y divide-slate-100">
+                {reports.slice(0, 5).map((report, i) => {
                   const cat = getCategoryInfo(report.category)
                   return (
-                    <tr key={report.$id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-500">{i + 1}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span>{cat.icon}</span>
-                          <span className="text-sm font-medium text-slate-800">{cat.label}</span>
-                        </div>
+                    <tr key={report.$id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-6 py-4 font-medium text-slate-700">{report.$id.slice(-5).toUpperCase()}</td>
+                      <td className="px-6 py-4 text-slate-600">{cat.label}</td>
+                      <td className="px-6 py-4 text-slate-600">
+                        {report.latitude.toFixed(2)}, {report.longitude.toFixed(2)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {report.latitude.toFixed(3)}, {report.longitude.toFixed(3)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`badge ${getStatusColor(report.status)}`}>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${report.status === 'collected' ? 'bg-emerald-100 text-emerald-700' : report.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
                           {report.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3">
-                        <span className={`badge ${getVerificationColor(report.verificationStatus)}`}>
-                          {report.verificationStatus || 'pending-review'}
-                        </span>
+                      <td className="px-6 py-4 flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center"><User className="w-3 h-3 text-emerald-800" /></div>
+                        <span className="text-slate-600">Ajay</span>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-500">
-                        {timeAgo(report.createdAt)}
+                      <td className="px-6 py-4 text-slate-600">{report.confidenceScore || 85}%</td>
+                      <td className="px-6 py-4">
+                        {report.verificationStatus === 'approved' ? (
+                          <span className="text-emerald-600 font-medium text-xs bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">Approved</span>
+                        ) : report.verificationStatus === 'rejected' ? (
+                          <span className="text-red-600 font-medium text-xs bg-red-50 px-2 py-1 rounded-md border border-red-100">Rejected</span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => onVerify(report, 'approved')}
+                              disabled={verifyingReportId === report.$id}
+                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-medium rounded-md transition-colors disabled:opacity-50"
+                            >
+                              {verifyingReportId === report.$id ? '...' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => onVerify(report, 'rejected')}
+                              disabled={verifyingReportId === report.$id}
+                              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-medium rounded-md transition-colors disabled:opacity-50"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )
@@ -601,67 +641,57 @@ function Dashboard({
         )}
       </div>
 
-      {/* Verification Queue */}
-      <div className="card p-6 mt-6">
-        <h3 className="font-semibold text-slate-800 mb-4">Image Verification Queue</h3>
-
-        {reports.filter(r => r.photoUrl).length === 0 ? (
-          <p className="text-sm text-gray-500">No image reports available for verification.</p>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-4">
-            {reports
-              .filter((report) => report.photoUrl)
-              .slice(0, 12)
-              .map((report) => {
-                const cat = getCategoryInfo(report.category)
-                const isBusy = verifyingReportId === report.$id
-                const verificationStatus = report.verificationStatus || 'pending-review'
-
-                return (
-                  <div key={report.$id} className="card p-4">
-                    <img
-                      src={report.photoUrl}
-                      alt={`Uploaded ${cat.label}`}
-                      className="w-full h-40 object-cover rounded-lg border border-slate-200 mb-3"
-                    />
-
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <p className="font-semibold text-slate-800 truncate">{cat.icon} {cat.label}</p>
-                      <span className={`badge ${getVerificationColor(verificationStatus)}`}>
-                        {verificationStatus}
-                      </span>
-                    </div>
-
-                    {report.verificationNotes && (
-                      <p className="text-xs text-gray-600 mb-2">Note: {report.verificationNotes}</p>
-                    )}
-
-                    <p className="text-xs text-gray-500 mb-3">{timeAgo(report.createdAt)}</p>
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => onVerify(report, 'approved')}
-                        disabled={isBusy}
-                        className="btn-secondary flex-1 text-sm"
-                      >
-                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => onVerify(report, 'rejected')}
-                        disabled={isBusy}
-                        className="btn-secondary flex-1 text-sm"
-                      >
-                        <ShieldX className="w-4 h-4 text-red-600" />
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
+      <div className="grid lg:grid-cols-3 gap-6 mt-6">
+        <div className="card p-6 shadow-sm">
+          <h4 className="font-semibold text-slate-800 mb-4">Analytics Overview</h4>
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="font-medium text-slate-800">Hazardous items</p>
+              <p className="text-red-600 font-bold">119</p>
+            </div>
           </div>
-        )}
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="font-medium text-slate-800">AI Accuracy</p>
+              <p className="text-emerald-600 font-bold">92%</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-6 shadow-sm bg-gradient-to-br from-emerald-50 to-white flex flex-col justify-center items-center relative overflow-hidden">
+          <h4 className="font-semibold text-slate-800 mb-2 z-10">AI Accuracy</h4>
+          <p className="text-5xl font-bold text-slate-800 z-10 mb-2">92%</p>
+          <div className="absolute -bottom-4 -right-4 w-32 h-32 opacity-20">
+             <Cpu className="w-full h-full text-emerald-600" />
+          </div>
+        </div>
+
+        <div className="card p-6 shadow-sm">
+           <h4 className="font-semibold text-slate-800 mb-4">Bin Fill Level</h4>
+           <div className="space-y-4">
+             <div>
+               <div className="flex justify-between text-sm mb-1"><span className="text-slate-600">Zone A</span><span className="font-medium">79%</span></div>
+               <div className="h-2 bg-slate-100 rounded-full"><div className="h-full bg-amber-500 rounded-full" style={{width: '79%'}}></div></div>
+             </div>
+             <div>
+               <div className="flex justify-between text-sm mb-1"><span className="text-slate-600">Zone B</span><span className="font-medium">92%</span></div>
+               <div className="h-2 bg-slate-100 rounded-full"><div className="h-full bg-red-500 rounded-full" style={{width: '92%'}}></div></div>
+             </div>
+             <div>
+               <div className="flex justify-between text-sm mb-1"><span className="text-slate-600">Zone C</span><span className="font-medium">20%</span></div>
+               <div className="h-2 bg-slate-100 rounded-full"><div className="h-full bg-emerald-500 rounded-full" style={{width: '20%'}}></div></div>
+             </div>
+           </div>
+        </div>
       </div>
+
+
     </div>
   )
 }
@@ -695,7 +725,7 @@ function MapView({ reports, hotspots }: { reports: Report[]; hotspots: Hotspot[]
         <MapContainer 
           center={center} 
           zoom={12} 
-          style={{ height: '100%', width: '100%' }}
+          style={{ height: '100%', width: '100%', zIndex: 1 }}
         >
           <TileLayer
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

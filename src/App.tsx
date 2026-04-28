@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Auth from '@/pages/Auth'
+import Landing from '@/pages/Landing'
 import CitizenApp from '@/apps/citizen'
 import PMCApp from '@/apps/pmc'
 import DriverApp from '@/apps/driver'
@@ -130,7 +131,7 @@ export default function App() {
       <Routes>
         <Route
           path="/"
-          element={<Navigate to={getDefaultPath(isAuthenticated, userRole)} replace />}
+          element={<Landing />}
         />
         <Route
           path="/auth"

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
   Recycle,
-  Smartphone,
   Mail,
   ChevronRight,
   User,
@@ -10,12 +9,12 @@ import {
   ShieldCheck,
   Settings2
 } from 'lucide-react'
-import { sendOTP, verifyOTP, emailLogin, emailSignup, checkBackendReachability } from '@/lib/appwrite'
+import { emailLogin, emailSignup, checkBackendReachability } from '@/lib/appwrite'
 import type { UserRole } from '@/lib/types'
-import { EmailSchema, OtpSchema, PasswordSchema, PhoneSchema, UserRoleSchema } from '@/lib/validation'
+import { EmailSchema, PasswordSchema, UserRoleSchema } from '@/lib/validation'
 import { toast } from 'sonner'
 
-type AuthStep = 'role' | 'method' | 'phone' | 'otp' | 'email'
+type AuthStep = 'role' | 'email'
 
 interface AuthProps {
   onLogin: () => void
@@ -30,13 +29,10 @@ const ROLES: Array<{ id: UserRole; label: string; desc: string; icon: typeof Use
 export default function Auth({ onLogin }: AuthProps) {
   const [step, setStep] = useState<AuthStep>('role')
   const [selectedRole, setSelectedRole] = useState<UserRole>('citizen')
-  const [phone, setPhone] = useState('')
-  const [otp, setOtp] = useState('')
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [isSignup, setIsSignup] = useState(false)
@@ -51,7 +47,7 @@ export default function Auth({ onLogin }: AuthProps) {
       const role = UserRoleSchema.safeParse(roleParam)
       if (!role.success) return
       setSelectedRole(role.data)
-      setStep('method')
+      setStep('email')
     } catch {
       // ignore
     }
@@ -96,57 +92,11 @@ export default function Auth({ onLogin }: AuthProps) {
 
   const handleSelectRole = (role: UserRole) => {
     setSelectedRole(role)
-    setStep('method')
+    setStep('email')
     setError('')
   }
 
-  const handleSendOTP = async () => {
-    const normalizedPhone = phone.replace(/\D/g, '').slice(0, 10)
-    const phoneResult = PhoneSchema.safeParse(normalizedPhone)
-    if (!phoneResult.success) {
-      setError(phoneResult.error.issues[0]?.message || 'Enter a valid 10-digit phone number.')
-      return
-    }
 
-    setLoading(true)
-    setError('')
-    try {
-      const result = await sendOTP(phoneResult.data)
-      if (!result.userId) {
-        throw new Error('Authentication provider did not return a valid user id.')
-      }
-      setUserId(result.userId)
-      setStep('otp')
-    } catch (err) {
-      const msg = toUserFacingError(err, 'Failed to send OTP.')
-      setError(msg)
-      toast.error(msg)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleVerifyOTP = async () => {
-    const otpResult = OtpSchema.safeParse(otp)
-    if (!otpResult.success) {
-      setError(otpResult.error.issues[0]?.message || 'Enter a valid 6-digit OTP.')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-    try {
-      const role = UserRoleSchema.parse(selectedRole)
-      await verifyOTP(userId, otpResult.data, role)
-      onLogin()
-    } catch (err) {
-      const msg = toUserFacingError(err, 'Invalid OTP.')
-      setError(msg)
-      toast.error(msg)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleEmailLogin = async () => {
     const emailResult = EmailSchema.safeParse(email)
@@ -253,7 +203,7 @@ export default function Auth({ onLogin }: AuthProps) {
               <p className="muted-copy text-body mt-2">
                 {step === 'role'
                   ? 'Select the role you are signing in as. You can switch later before login.'
-                  : 'Use the method that is fastest for your workflow.'}
+                  : 'Enter your credentials to continue.'}
               </p>
             </header>
 
@@ -284,112 +234,11 @@ export default function Auth({ onLogin }: AuthProps) {
               </div>
             )}
 
-            {step === 'method' && (
-              <div className="animate-fade-in">
-                <button onClick={() => setStep('role')} className="btn-ghost px-0 text-sm" aria-label="Back to role selection">
-                  Back to roles
-                </button>
 
-                <div className="mt-3 rounded-panel border border-primary-200/70 bg-primary-50/70 p-3 text-sm text-primary-800">
-                  Signing in as <strong>{selectedRoleMeta?.label}</strong>
-                </div>
-
-                <div className="space-y-3 mt-4">
-                  <button onClick={() => setStep('phone')} className="card card-hover w-full p-4 text-left" aria-label="Continue with phone OTP">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-soft bg-accent-100 text-accent-700 flex items-center justify-center">
-                        <Smartphone className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-900">Phone OTP</p>
-                        <p className="text-sm muted-copy">Fastest for field usage and shared devices.</p>
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-slate-400" />
-                    </div>
-                  </button>
-
-                  <button onClick={() => setStep('email')} className="card card-hover w-full p-4 text-left" aria-label="Continue with email and password">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-soft bg-violet-100 text-violet-700 flex items-center justify-center">
-                        <Mail className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-900">Email and password</p>
-                        <p className="text-sm muted-copy">Best for regular dashboard users.</p>
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-slate-400" />
-                    </div>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {step === 'phone' && (
-              <div className="animate-fade-in space-y-4">
-                <button onClick={() => setStep('method')} className="btn-ghost px-0 text-sm" aria-label="Back to login methods">
-                  Back
-                </button>
-
-                <div>
-                  <p className="font-semibold text-slate-900">Phone number</p>
-                  <p className="text-sm muted-copy mt-1">We will send a secure 6-digit one-time code.</p>
-                </div>
-
-                <div className="flex gap-2">
-                  <div className="input bg-slate-100 text-center font-semibold w-16" aria-label="Country code">
-                    +91
-                  </div>
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    placeholder="9876543210"
-                    className="input flex-1"
-                    autoFocus
-                    aria-label="Phone number"
-                  />
-                </div>
-
-                {error && <div className="state-surface-danger rounded-soft border p-3 text-sm">{error}</div>}
-
-                <button onClick={handleSendOTP} disabled={loading || phone.length !== 10} className="btn-primary w-full" aria-label="Send OTP">
-                  {loading ? <span className="spinner" /> : 'Send OTP'}
-                </button>
-              </div>
-            )}
-
-            {step === 'otp' && (
-              <div className="animate-fade-in space-y-4">
-                <button onClick={() => setStep('phone')} className="btn-ghost px-0 text-sm" aria-label="Back to phone number input">
-                  Back
-                </button>
-
-                <div>
-                  <p className="font-semibold text-slate-900">Enter OTP</p>
-                  <p className="text-sm muted-copy mt-1">Code sent to +91 {phone}.</p>
-                </div>
-
-                <input
-                  type="text"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
-                  className="input text-center text-2xl tracking-[0.46em]"
-                  autoFocus
-                  aria-label="One time password"
-                />
-
-                {error && <div className="state-surface-danger rounded-soft border p-3 text-sm">{error}</div>}
-
-                <button onClick={handleVerifyOTP} disabled={loading || otp.length !== 6} className="btn-primary w-full" aria-label="Verify OTP and login">
-                  {loading ? <span className="spinner" /> : 'Verify and login'}
-                </button>
-              </div>
-            )}
 
             {step === 'email' && (
               <div className="animate-fade-in space-y-4">
-                <button onClick={() => setStep('method')} className="btn-ghost px-0 text-sm" aria-label="Back to login methods">
+                <button onClick={() => setStep('role')} className="btn-ghost px-0 text-sm" aria-label="Back to role selection">
                   Back
                 </button>
 
@@ -445,24 +294,16 @@ export default function Auth({ onLogin }: AuthProps) {
                   {loading ? <span className="spinner" /> : isSignup ? 'Create account' : 'Login'}
                 </button>
 
-                {selectedRole === 'citizen' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setError('')
-                      setIsSignup((prev) => !prev)
-                    }}
-                    className="w-full text-sm font-medium text-primary-700 hover:text-primary-800"
-                  >
-                    {isSignup ? 'Already have an account? Login' : 'New user? Create account'}
-                  </button>
-                )}
-
-                {selectedRole !== 'citizen' && (
-                  <p className="text-xs text-slate-500 text-center">
-                    Staff accounts are provisioned by admin. Use your assigned credentials.
-                  </p>
-                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('')
+                    setIsSignup((prev) => !prev)
+                  }}
+                  className="w-full text-sm font-medium text-primary-700 hover:text-primary-800"
+                >
+                  {isSignup ? 'Already have an account? Login' : 'New user? Create account'}
+                </button>
 
                 <details className="rounded-soft border border-slate-200 bg-slate-50/80 p-3">
                   <summary className="cursor-pointer select-none text-sm font-medium text-slate-700 flex items-center gap-2">

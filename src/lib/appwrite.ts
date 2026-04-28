@@ -385,9 +385,6 @@ export async function emailLogin(email: string, password: string, role: UserRole
 
 // Email signup
 export async function emailSignup(email: string, password: string, name: string, role: UserRole): Promise<void> {
-  if (role !== 'citizen') {
-    throw new Error('Role access denied. Driver/PMC accounts must be provisioned by an admin.')
-  }
 
   try {
     await account.create(ID.unique(), email, password, name)
